@@ -78,7 +78,7 @@ export const ISSTracker = () => {
         setPassError("Location permission denied.");
         setPassStatus("error");
       },
-      { enableHighAccuracy: false, timeout: 8000, maximumAge: 60000 },
+      { enableHighAccuracy: false, timeout: 12000, maximumAge: 60000 },
     );
   };
 
