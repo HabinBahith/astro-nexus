@@ -1,9 +1,10 @@
-import { Satellite, Activity, Rocket, Brain, Menu } from "lucide-react";
+import { Satellite, Activity, Rocket, Brain, Menu, Globe2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 const navItems = [
+  { id: "home", label: "Home", icon: Globe2, path: "/" },
   { id: "tracker", label: "ISS Tracker", icon: Satellite, path: "/tracker" },
   { id: "weather", label: "Space Weather", icon: Activity, path: "/weather" },
   { id: "missions", label: "Missions", icon: Rocket, path: "/missions" },
@@ -14,7 +15,10 @@ export const Header = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const navigate = useNavigate();
   const { pathname } = useLocation();
-  const currentPath = pathname === "/" ? "/tracker" : pathname;
+  const currentPath = pathname;
+
+  const isActivePath = (target: string) =>
+    target === "/" ? currentPath === "/" : currentPath.startsWith(target);
 
   return (
     <header className="fixed top-0 left-0 right-0 z-50 glass-panel border-b border-border/50">
@@ -43,7 +47,7 @@ export const Header = () => {
             {navItems.map((item) => (
               <Button
                 key={item.id}
-                variant={currentPath.startsWith(item.path) ? "default" : "ghost"}
+                variant={isActivePath(item.path) ? "default" : "ghost"}
                 size="sm"
                 onClick={() => navigate(item.path)}
                 className="gap-2"
@@ -82,7 +86,7 @@ export const Header = () => {
               {navItems.map((item) => (
                 <Button
                   key={item.id}
-                  variant={currentPath.startsWith(item.path) ? "default" : "ghost"}
+                  variant={isActivePath(item.path) ? "default" : "ghost"}
                   onClick={() => {
                     navigate(item.path);
                     setMobileMenuOpen(false);
