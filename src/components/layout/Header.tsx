@@ -1,21 +1,20 @@
 import { Satellite, Activity, Rocket, Brain, Menu } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useState } from "react";
-
-interface HeaderProps {
-  activeSection: string;
-  onNavigate: (section: string) => void;
-}
+import { useLocation, useNavigate } from "react-router-dom";
 
 const navItems = [
-  { id: "tracker", label: "ISS Tracker", icon: Satellite },
-  { id: "weather", label: "Space Weather", icon: Activity },
-  { id: "missions", label: "Missions", icon: Rocket },
-  { id: "ai", label: "AI Explainer", icon: Brain },
+  { id: "tracker", label: "ISS Tracker", icon: Satellite, path: "/tracker" },
+  { id: "weather", label: "Space Weather", icon: Activity, path: "/weather" },
+  { id: "missions", label: "Missions", icon: Rocket, path: "/missions" },
+  { id: "ai", label: "AI Explainer", icon: Brain, path: "/ai" },
 ];
 
-export const Header = ({ activeSection, onNavigate }: HeaderProps) => {
+export const Header = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const navigate = useNavigate();
+  const { pathname } = useLocation();
+  const currentPath = pathname === "/" ? "/tracker" : pathname;
 
   return (
     <header className="fixed top-0 left-0 right-0 z-50 glass-panel border-b border-border/50">
@@ -44,9 +43,9 @@ export const Header = ({ activeSection, onNavigate }: HeaderProps) => {
             {navItems.map((item) => (
               <Button
                 key={item.id}
-                variant={activeSection === item.id ? "default" : "ghost"}
+                variant={currentPath.startsWith(item.path) ? "default" : "ghost"}
                 size="sm"
-                onClick={() => onNavigate(item.id)}
+                onClick={() => navigate(item.path)}
                 className="gap-2"
               >
                 <item.icon className="w-4 h-4" />
@@ -83,9 +82,9 @@ export const Header = ({ activeSection, onNavigate }: HeaderProps) => {
               {navItems.map((item) => (
                 <Button
                   key={item.id}
-                  variant={activeSection === item.id ? "default" : "ghost"}
+                  variant={currentPath.startsWith(item.path) ? "default" : "ghost"}
                   onClick={() => {
-                    onNavigate(item.id);
+                    navigate(item.path);
                     setMobileMenuOpen(false);
                   }}
                   className="justify-start gap-3"
