@@ -131,10 +131,6 @@ const MissionCard = ({ mission, onDetailsClick }: { mission: Launch; onDetailsCl
         </div>
       </div>
 
-      <div className="text-xs text-muted-foreground mb-4">
-        <span className="text-primary">Payload:</span> {mission.payload || "N/A"}
-      </div>
-
       <div className="flex items-center justify-between">
         {!isPast && (
           <div>
@@ -233,13 +229,6 @@ const MissionDetailsDialog = ({ missionId, open, onOpenChange }: { missionId: st
               <div>
                 <span className="text-xs uppercase tracking-wide text-muted-foreground">Mission Name</span>
                 <p className="text-sm font-semibold mt-1">{mission.missionName}</p>
-              </div>
-            )}
-
-            {mission.payload && (
-              <div>
-                <span className="text-xs uppercase tracking-wide text-muted-foreground">Payload</span>
-                <p className="text-sm mt-1">{mission.payload}</p>
               </div>
             )}
 
