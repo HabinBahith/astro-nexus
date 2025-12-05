@@ -1,5 +1,7 @@
 import { Activity, Sun, Wind, Zap, AlertTriangle, TrendingUp } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useMemo } from "react";
+import { fetchSpaceWeather } from "@/lib/api";
 
 interface WeatherMetric {
   label: string;
@@ -104,69 +106,118 @@ const SparkLine = ({ data, status }: { data: number[]; status: string }) => {
   );
 };
 
-export const SpaceWeather = () => {
-  const [metrics, setMetrics] = useState<WeatherMetric[]>([
-    {
-      label: "KP Index",
-      value: 3,
-      unit: "",
-      status: "normal",
-      icon: Activity,
-      trend: "stable",
-    },
-    {
-      label: "Solar Wind",
-      value: 412,
-      unit: "km/s",
-      status: "elevated",
-      icon: Wind,
-      trend: "up",
-    },
-    {
-      label: "Solar Flare",
-      value: "C2.1",
-      unit: "class",
-      status: "normal",
-      icon: Sun,
-      trend: "stable",
-    },
-    {
-      label: "Radiation",
-      value: 0.8,
-      unit: "pfu",
-      status: "normal",
-      icon: Zap,
-      trend: "down",
-    },
-  ]);
+const defaultMetrics: WeatherMetric[] = [
+  {
+    label: "KP Index",
+    value: 3,
+    unit: "",
+    status: "normal",
+    icon: Activity,
+    trend: "stable",
+  },
+  {
+    label: "Solar Wind",
+    value: 412,
+    unit: "km/s",
+    status: "elevated",
+    icon: Wind,
+    trend: "up",
+  },
+  {
+    label: "Solar Flare",
+    value: "C2.1",
+    unit: "class",
+    status: "normal",
+    icon: Sun,
+    trend: "stable",
+  },
+  {
+    label: "Radiation",
+    value: 0.8,
+    unit: "pfu",
+    status: "normal",
+    icon: Zap,
+    trend: "down",
+  },
+];
 
-  const [historicalData] = useState({
-    kp: [2, 2, 3, 3, 2, 3, 4, 3, 3, 2, 3, 3],
-    wind: [380, 395, 410, 420, 415, 425, 430, 412, 408, 415, 420, 412],
+const defaultHistoricalData = {
+  kp: [2, 2, 3, 3, 2, 3, 4, 3, 3, 2, 3, 3],
+  wind: [380, 395, 410, 420, 415, 425, 430, 412, 408, 415, 420, 412],
+};
+
+const getKpStatus = (value: number): WeatherMetric["status"] => {
+  if (value >= 8) return "extreme";
+  if (value >= 6) return "high";
+  if (value >= 4) return "elevated";
+  return "normal";
+};
+
+const getSolarWindStatus = (value: number): WeatherMetric["status"] => {
+  if (value >= 600) return "extreme";
+  if (value >= 500) return "high";
+  if (value >= 400) return "elevated";
+  return "normal";
+};
+
+export const SpaceWeather = () => {
+  const { data } = useQuery({
+    queryKey: ["space-weather"],
+    queryFn: fetchSpaceWeather,
+    refetchInterval: 5 * 60 * 1000,
+    staleTime: 60 * 1000,
+    retry: 1,
   });
 
-  // Simulate updates
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setMetrics((prev) =>
-        prev.map((metric) => {
-          if (metric.label === "Solar Wind") {
-            const newValue = Math.round(
-              (metric.value as number) + (Math.random() * 20 - 10)
-            );
-            return {
-              ...metric,
-              value: Math.max(300, Math.min(600, newValue)),
-              status: newValue > 500 ? "high" : newValue > 400 ? "elevated" : "normal",
-            };
-          }
-          return metric;
-        })
-      );
-    }, 10000);
+  const metrics = useMemo<WeatherMetric[]>(() => {
+    const kp = data?.kpIndex ?? (defaultMetrics[0].value as number);
+    const solarWind = data?.solarWindSpeed ?? (defaultMetrics[1].value as number);
 
-    return () => clearInterval(interval);
-  }, []);
+    return [
+      {
+        ...defaultMetrics[0],
+        value: kp.toFixed(1),
+        status: getKpStatus(kp),
+      },
+      {
+        ...defaultMetrics[1],
+        value: Math.round(solarWind),
+        status: getSolarWindStatus(solarWind),
+        trend:
+          data?.solarWindHistory && data.solarWindHistory.length > 1
+            ? data.solarWindHistory[data.solarWindHistory.length - 1] >
+              data.solarWindHistory[0]
+              ? "up"
+              : "down"
+            : defaultMetrics[1].trend,
+      },
+      defaultMetrics[2], // flare placeholder (NASA/NOAA flare class not yet wired)
+      defaultMetrics[3],
+    ];
+  }, [data]);
+
+  const historicalData = useMemo(
+    () => ({
+      kp: data?.kpHistory?.length ? data.kpHistory : defaultHistoricalData.kp,
+      wind:
+        data?.solarWindHistory?.length
+          ? data.solarWindHistory
+          : defaultHistoricalData.wind,
+    }),
+    [data],
+  );
+
+  const kpValueNumber = Number(metrics[0].value);
+  const kpAverage =
+    historicalData.kp.length > 0
+      ? (historicalData.kp.reduce((a, b) => a + b, 0) / historicalData.kp.length).toFixed(1)
+      : "–";
+  const windAverage =
+    historicalData.wind.length > 0
+      ? Math.round(
+          historicalData.wind.reduce((a, b) => a + b, 0) / historicalData.wind.length,
+        )
+      : "–";
 
   return (
     <section className="glass-panel p-6">
@@ -243,7 +294,7 @@ export const SpaceWeather = () => {
             KP Index Gauge
           </h3>
           <div className="flex items-center gap-6">
-            <GaugeChart value={3} max={9} status="normal" />
+            <GaugeChart value={kpValueNumber} max={9} status={metrics[0].status} />
             <div className="flex-1 space-y-2">
               <div className="flex items-center justify-between text-xs">
                 <span className="text-muted-foreground">0-3</span>
@@ -273,14 +324,14 @@ export const SpaceWeather = () => {
             <div>
               <div className="flex items-center justify-between text-xs mb-1">
                 <span className="text-muted-foreground">KP Index</span>
-                <span className="text-status-success">Avg: 2.7</span>
+                <span className="text-status-success">Avg: {kpAverage}</span>
               </div>
               <SparkLine data={historicalData.kp} status="normal" />
             </div>
             <div>
               <div className="flex items-center justify-between text-xs mb-1">
                 <span className="text-muted-foreground">Solar Wind</span>
-                <span className="text-status-warning">Avg: 412 km/s</span>
+                <span className="text-status-warning">Avg: {windAverage} km/s</span>
               </div>
               <SparkLine data={historicalData.wind} status="elevated" />
             </div>

@@ -1,20 +1,10 @@
 import { Rocket, Calendar, MapPin, ExternalLink, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { fetchUpcomingLaunches, type Launch } from "@/lib/api";
+import { useEffect, useMemo, useState } from "react";
 
-interface Mission {
-  id: string;
-  name: string;
-  provider: string;
-  rocket: string;
-  launchSite: string;
-  launchDate: Date;
-  status: "upcoming" | "go" | "tbd" | "hold";
-  payload: string;
-  image?: string;
-}
-
-const mockMissions: Mission[] = [
+const mockMissions: Launch[] = [
   {
     id: "1",
     name: "Starlink Group 6-32",
@@ -125,7 +115,7 @@ const Countdown = ({ targetDate }: { targetDate: Date }) => {
   );
 };
 
-const MissionCard = ({ mission }: { mission: Mission }) => {
+const MissionCard = ({ mission }: { mission: Launch }) => {
   return (
     <div className="mission-card glass-panel p-4 border border-border/50 hover:border-primary/30">
       <div className="flex items-start justify-between mb-3">
@@ -191,7 +181,18 @@ const MissionCard = ({ mission }: { mission: Mission }) => {
 };
 
 export const MissionsFeed = () => {
-  const [missions] = useState(mockMissions);
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ["missions"],
+    queryFn: () => fetchUpcomingLaunches(4),
+    staleTime: 5 * 60 * 1000,
+    refetchInterval: 5 * 60 * 1000,
+    retry: 1,
+  });
+
+  const missions = useMemo<Launch[]>(() => {
+    if (!isError && data && data.length) return data;
+    return mockMissions;
+  }, [data, isError]);
 
   return (
     <section className="glass-panel p-6">
@@ -209,7 +210,7 @@ export const MissionsFeed = () => {
             </p>
           </div>
         </div>
-        <Button variant="outline" size="sm" className="gap-2">
+        <Button variant="outline" size="sm" className="gap-2" disabled={isLoading}>
           View All <ExternalLink className="w-4 h-4" />
         </Button>
       </div>

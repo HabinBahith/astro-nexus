@@ -1,5 +1,8 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Satellite, MapPin, Clock, ArrowUp, Gauge } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { fetchISSPosition, fetchNextISSPass, type ISSPass } from "@/lib/api";
 
 interface ISSPosition {
   latitude: number;
@@ -18,28 +21,79 @@ export const ISSTracker = () => {
     timestamp: Date.now(),
   });
   const [isLive, setIsLive] = useState(true);
+  const [pass, setPass] = useState<ISSPass | null>(null);
+  const [passStatus, setPassStatus] = useState<"idle" | "locating" | "loading" | "error">(
+    "idle",
+  );
+  const [passError, setPassError] = useState<string | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  // Simulate ISS position updates (in production, use real API)
-  useEffect(() => {
-    const updatePosition = () => {
-      setPosition((prev) => {
-        // Simulate orbital movement
-        const newLong = ((prev.longitude + 0.1) % 360) - 180;
-        const newLat = Math.sin(Date.now() / 50000) * 51.6; // ISS orbit inclination
-        return {
-          latitude: newLat,
-          longitude: newLong,
-          altitude: 408 + Math.sin(Date.now() / 100000) * 12,
-          velocity: 27600 + Math.random() * 100 - 50,
-          timestamp: Date.now(),
-        };
-      });
-    };
+  const {
+    data: livePosition,
+    isError: isIssError,
+  } = useQuery({
+    queryKey: ["iss-position"],
+    queryFn: fetchISSPosition,
+    refetchInterval: 2000,
+    staleTime: 1500,
+    retry: 1,
+  });
 
-    const interval = setInterval(updatePosition, 5000);
-    return () => clearInterval(interval);
-  }, []);
+  useEffect(() => {
+    if (livePosition) {
+      setPosition(livePosition);
+      setIsLive(true);
+    } else if (isIssError) {
+      setIsLive(false);
+    }
+  }, [livePosition, isIssError]);
+
+  const requestNextPass = () => {
+    if (!navigator.geolocation) {
+      setPassError("Geolocation not supported in this browser.");
+      setPassStatus("error");
+      return;
+    }
+
+    setPassStatus("locating");
+    setPassError(null);
+
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        try {
+          setPassStatus("loading");
+          const next = await fetchNextISSPass(pos.coords.latitude, pos.coords.longitude);
+          setPass(next);
+          setPassStatus("idle");
+        } catch (err) {
+          const message =
+            err instanceof Error && err.message
+              ? err.message
+              : "Could not fetch next pass for your location.";
+          setPassError(message);
+          setPassStatus("error");
+        }
+      },
+      () => {
+        setPassError("Location permission denied.");
+        setPassStatus("error");
+      },
+      { enableHighAccuracy: false, timeout: 8000, maximumAge: 60000 },
+    );
+  };
+
+  const nextPassCountdown = useMemo(() => {
+    if (!pass) return null;
+    const ms = pass.risetime * 1000 - Date.now();
+    if (ms <= 0) return "Passing now";
+    const totalSeconds = Math.floor(ms / 1000);
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(
+      seconds,
+    ).padStart(2, "0")} until visible`;
+  }, [pass]);
 
   // Draw Earth visualization
   useEffect(() => {
@@ -159,7 +213,8 @@ export const ISSTracker = () => {
 
   const formatCoordinate = (value: number, isLat: boolean) => {
     const direction = isLat ? (value >= 0 ? "N" : "S") : value >= 0 ? "E" : "W";
-    return `${Math.abs(value).toFixed(4)}° ${direction}`;
+    // Show signed value and direction for clarity
+    return `${value.toFixed(4)}° (${direction})`;
   };
 
   return (
@@ -268,19 +323,44 @@ export const ISSTracker = () => {
 
           {/* Next Pass Info */}
           <div className="glass-panel p-4 border-primary/30">
-            <div className="flex items-center gap-2 mb-3">
-              <Clock className="w-4 h-4 text-status-warning" />
-              <span className="text-xs uppercase tracking-wide text-muted-foreground">
-                Next Visible Pass
-              </span>
+            <div className="flex items-center justify-between gap-3 mb-3">
+              <div className="flex items-center gap-2">
+                <Clock className="w-4 h-4 text-status-warning" />
+                <span className="text-xs uppercase tracking-wide text-muted-foreground">
+                  Next Visible Pass
+                </span>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 px-2 text-status-warning hover:text-status-warning"
+                onClick={requestNextPass}
+                disabled={passStatus === "locating" || passStatus === "loading"}
+              >
+                {passStatus === "locating"
+                  ? "Locating..."
+                  : passStatus === "loading"
+                  ? "Fetching..."
+                  : "Use My Location"}
+              </Button>
             </div>
             <div className="flex items-baseline gap-2">
-              <p className="font-display text-2xl text-status-warning">02:34:18</p>
-              <span className="text-xs text-muted-foreground">until visible</span>
+              <p className="font-display text-2xl text-status-warning">
+                {nextPassCountdown ?? "--:--:--"}
+              </p>
+              {pass && (
+                <span className="text-xs text-muted-foreground">
+                  for {Math.round(pass.duration / 60)} min
+                </span>
+              )}
             </div>
-            <p className="text-xs text-muted-foreground mt-2">
-              Max elevation: 67° • Duration: 6 min
-            </p>
+            {passError ? (
+              <p className="text-xs text-alert-orange mt-2">{passError}</p>
+            ) : (
+              <p className="text-xs text-muted-foreground mt-2">
+                Uses your location to calculate the next visible ISS pass.
+              </p>
+            )}
           </div>
 
           {/* Orbit Info */}
