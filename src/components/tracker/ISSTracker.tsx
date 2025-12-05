@@ -2,7 +2,12 @@ import { useEffect, useMemo, useState, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Satellite, MapPin, Clock, ArrowUp, Gauge } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { fetchISSPosition, fetchNextISSPass, type ISSPass } from "@/lib/api";
+import {
+  fetchISSPosition,
+  fetchNextISSPass,
+  fetchISSOrbitalInfo,
+  type ISSPass,
+} from "@/lib/api";
 
 interface ISSPosition {
   latitude: number;
@@ -36,6 +41,14 @@ export const ISSTracker = () => {
     queryFn: fetchISSPosition,
     refetchInterval: 2000,
     staleTime: 1500,
+    retry: 1,
+  });
+
+  const { data: orbitalInfo } = useQuery({
+    queryKey: ["iss-orbit"],
+    queryFn: fetchISSOrbitalInfo,
+    refetchInterval: 5 * 60 * 1000,
+    staleTime: 4 * 60 * 1000,
     retry: 1,
   });
 
@@ -366,14 +379,28 @@ export const ISSTracker = () => {
           {/* Orbit Info */}
           <div className="text-xs text-muted-foreground space-y-1">
             <p>
-              Orbit #{" "}
-              <span className="text-primary font-mono">147,892</span> • Inclination:{" "}
-              <span className="text-primary font-mono">51.6°</span>
+              Revolution Count:{" "}
+              <span className="text-primary font-mono">
+                {Number.isFinite(orbitalInfo?.orbitNumber)
+                  ? orbitalInfo!.orbitNumber!.toLocaleString("en-US")
+                  : "—"}
+              </span>{" "}
+              • Inclination:{" "}
+              <span className="text-primary font-mono">
+                {orbitalInfo?.inclinationDeg
+                  ? `${orbitalInfo.inclinationDeg.toFixed(1)}°`
+                  : "—"}
+              </span>
             </p>
             <p>
               Period:{" "}
-              <span className="text-primary font-mono">92.68 min</span> • Revolutions/day:{" "}
-              <span className="text-primary font-mono">15.54</span>
+              <span className="text-primary font-mono">
+                {orbitalInfo?.periodMinutes ? `${orbitalInfo.periodMinutes.toFixed(2)} min` : "—"}
+              </span>{" "}
+              • Revolutions/day:{" "}
+              <span className="text-primary font-mono">
+                {orbitalInfo?.revsPerDay ? orbitalInfo.revsPerDay.toFixed(2) : "—"}
+              </span>
             </p>
           </div>
         </div>

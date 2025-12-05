@@ -45,60 +45,92 @@ export const AIExplainer = () => {
     setInput("");
     setIsLoading(true);
 
-    // Simulate AI response (in production, connect to Lovable AI)
-    setTimeout(() => {
-      const responses: Record<string, string> = {
-        "solar flares": `Solar flares are sudden, intense bursts of radiation from the Sun's surface. They occur when magnetic energy built up in the solar atmosphere is suddenly released. 
+    try {
+      const replicateApiKey = import.meta.env.VITE_REPLICATE_API_KEY;
+      if (!replicateApiKey) {
+        throw new Error("Replicate API key not configured");
+      }
 
-**Key facts:**
-• Temperature can reach millions of degrees
-• Travel at the speed of light (8 minutes to Earth)
-• Classified by power: A, B, C, M, and X classes
-• X-class flares are the most powerful
+      // Use Replicate's chat completion endpoint
+      const res = await fetch("https://api.replicate.com/v1/models/meta/meta-llama-3-70b-instruct/predictions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Token ${replicateApiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          input: {
+            prompt: `You are AstroNexus AI, a space science expert. Answer this question about space, astronomy, or space missions in a clear and engaging way (max 300 words): ${input}`,
+            max_new_tokens: 500,
+            temperature: 0.7,
+            top_p: 0.9,
+          },
+        }),
+      });
 
-They can affect radio communications, GPS systems, and create beautiful auroras when they interact with Earth's magnetic field.`,
-        "iss travel": `The International Space Station (ISS) travels at an incredible **27,600 km/h** (17,150 mph)!
+      if (!res.ok) {
+        const errorText = await res.text();
+        throw new Error(`Replicate API error: ${res.status} - ${errorText}`);
+      }
 
-**Orbital stats:**
-• Completes one orbit every ~92 minutes
-• That's 16 sunrises and sunsets per day
-• Orbits at ~400 km altitude
-• Travels ~8 km per second
+      const prediction = await res.json();
+      
+      // Poll for completion
+      let completed = false;
+      let attempts = 0;
+      const maxAttempts = 60; // 60 seconds timeout
+      
+      while (!completed && attempts < maxAttempts) {
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        const statusRes = await fetch(`https://api.replicate.com/v1/predictions/${prediction.id}`, {
+          headers: { "Authorization": `Token ${replicateApiKey}` },
+        });
+        
+        if (!statusRes.ok) {
+          throw new Error(`Failed to check prediction status: ${statusRes.status}`);
+        }
+        
+        const statusData = await statusRes.json();
+        
+        if (statusData.status === "succeeded") {
+          const output = statusData.output;
+          const content = Array.isArray(output) 
+            ? output.join("") 
+            : typeof output === "string" 
+              ? output 
+              : "I couldn't generate a response. Please try again.";
+          
+          const assistantMessage: Message = {
+            id: (Date.now() + 1).toString(),
+            role: "assistant",
+            content: content.trim() || "I couldn't generate a response. Please try again.",
+            timestamp: new Date(),
+          };
+          setMessages((prev) => [...prev, assistantMessage]);
+          completed = true;
+        } else if (statusData.status === "failed" || statusData.status === "canceled") {
+          throw new Error(statusData.error || "Prediction failed");
+        }
+        attempts++;
+      }
 
-At this speed, astronauts experience microgravity because they're in constant freefall around Earth. The station has traveled over 4 billion kilometers since launch!`,
-        "kp index": `The KP Index (Planetary K-index) measures global geomagnetic activity on a scale of **0-9**.
-
-**Scale breakdown:**
-• **0-3**: Quiet — Normal conditions
-• **4-5**: Active — Minor storm, possible aurora at high latitudes  
-• **6-7**: Storm — Aurora visible at mid-latitudes, possible GPS issues
-• **8-9**: Severe — Aurora at low latitudes, power grid concerns
-
-It's updated every 3 hours and is crucial for aurora hunters, satellite operators, and power grid managers. Higher KP = better aurora viewing!`,
-        default: `That's a fascinating question about space! While I'm currently demonstrating with pre-set responses, when fully connected to Lovable AI, I'll be able to provide detailed explanations on any astronomy or space science topic.
-
-Try asking about:
-• Solar phenomena (flares, wind, CMEs)
-• ISS and satellite tracking
-• Space weather impacts
-• Mission details and rocket technology`,
-      };
-
-      const key = Object.keys(responses).find((k) =>
-        input.toLowerCase().includes(k)
-      );
-      const responseContent = responses[key || "default"];
-
+      if (!completed) {
+        throw new Error("Request timed out after 60 seconds");
+      }
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : "Unknown error";
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: "assistant",
-        content: responseContent,
+        content: errorMessage.includes("API key")
+          ? "Replicate API key not configured. Please set VITE_REPLICATE_API_KEY in your environment variables."
+          : `I couldn't fetch a response right now: ${errorMessage}. Please try again in a moment.`,
         timestamp: new Date(),
       };
-
       setMessages((prev) => [...prev, assistantMessage]);
+    } finally {
       setIsLoading(false);
-    }, 1500);
+    }
   };
 
   const handleSuggestion = (question: string) => {

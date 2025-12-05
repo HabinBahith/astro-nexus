@@ -1,51 +1,15 @@
-import { Rocket, Calendar, MapPin, ExternalLink, ChevronRight } from "lucide-react";
+import { Rocket, Calendar, MapPin, ExternalLink, ChevronRight, Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useQuery } from "@tanstack/react-query";
-import { fetchUpcomingLaunches, type Launch } from "@/lib/api";
+import { fetchUpcomingLaunches, fetchRecentLaunches, fetchLaunchDetails, type Launch } from "@/lib/api";
 import { useEffect, useMemo, useState } from "react";
-
-const mockMissions: Launch[] = [
-  {
-    id: "1",
-    name: "Starlink Group 6-32",
-    provider: "SpaceX",
-    rocket: "Falcon 9 Block 5",
-    launchSite: "Cape Canaveral SLC-40",
-    launchDate: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000),
-    status: "go",
-    payload: "23 Starlink v2 Mini satellites",
-  },
-  {
-    id: "2",
-    name: "ISRO PSLV-C58",
-    provider: "ISRO",
-    rocket: "PSLV-XL",
-    launchSite: "Satish Dhawan Space Centre",
-    launchDate: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000),
-    status: "upcoming",
-    payload: "XPoSat X-ray Polarimeter Satellite",
-  },
-  {
-    id: "3",
-    name: "Artemis II",
-    provider: "NASA",
-    rocket: "SLS Block 1",
-    launchSite: "Kennedy Space Center LC-39B",
-    launchDate: new Date(Date.now() + 180 * 24 * 60 * 60 * 1000),
-    status: "upcoming",
-    payload: "Crewed lunar flyby mission",
-  },
-  {
-    id: "4",
-    name: "New Glenn Maiden Flight",
-    provider: "Blue Origin",
-    rocket: "New Glenn",
-    launchSite: "Cape Canaveral LC-36",
-    launchDate: new Date(Date.now() + 45 * 24 * 60 * 60 * 1000),
-    status: "tbd",
-    payload: "Test payload",
-  },
-];
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 const getStatusStyle = (status: string) => {
   switch (status) {
@@ -56,6 +20,10 @@ const getStatusStyle = (status: string) => {
     case "tbd":
       return "bg-status-warning/20 text-status-warning border-status-warning/30";
     case "hold":
+      return "bg-alert-orange/20 text-alert-orange border-alert-orange/30";
+    case "success":
+      return "bg-status-success/20 text-status-success border-status-success/30";
+    case "failure":
       return "bg-alert-orange/20 text-alert-orange border-alert-orange/30";
     default:
       return "bg-muted/20 text-muted-foreground border-muted/30";
@@ -115,7 +83,9 @@ const Countdown = ({ targetDate }: { targetDate: Date }) => {
   );
 };
 
-const MissionCard = ({ mission }: { mission: Launch }) => {
+const MissionCard = ({ mission, onDetailsClick }: { mission: Launch; onDetailsClick: (id: string) => void }) => {
+  const isPast = mission.launchDate.getTime() < Date.now();
+
   return (
     <div className="mission-card glass-panel p-4 border border-border/50 hover:border-primary/30">
       <div className="flex items-start justify-between mb-3">
@@ -162,17 +132,29 @@ const MissionCard = ({ mission }: { mission: Launch }) => {
       </div>
 
       <div className="text-xs text-muted-foreground mb-4">
-        <span className="text-primary">Payload:</span> {mission.payload}
+        <span className="text-primary">Payload:</span> {mission.payload || "N/A"}
       </div>
 
       <div className="flex items-center justify-between">
-        <div>
-          <span className="text-[10px] uppercase tracking-wider text-muted-foreground block mb-1">
-            T-Minus
-          </span>
-          <Countdown targetDate={mission.launchDate} />
-        </div>
-        <Button variant="ghost" size="sm" className="gap-1">
+        {!isPast && (
+          <div>
+            <span className="text-[10px] uppercase tracking-wider text-muted-foreground block mb-1">
+              T-Minus
+            </span>
+            <Countdown targetDate={mission.launchDate} />
+          </div>
+        )}
+        {isPast && (
+          <div className="text-xs text-muted-foreground">
+            Launched {mission.launchDate.toLocaleDateString()}
+          </div>
+        )}
+        <Button 
+          variant="ghost" 
+          size="sm" 
+          className="gap-1 ml-auto"
+          onClick={() => onDetailsClick(mission.id)}
+        >
           Details <ChevronRight className="w-4 h-4" />
         </Button>
       </div>
@@ -180,46 +162,216 @@ const MissionCard = ({ mission }: { mission: Launch }) => {
   );
 };
 
+const MissionDetailsDialog = ({ missionId, open, onOpenChange }: { missionId: string | null; open: boolean; onOpenChange: (open: boolean) => void }) => {
+  const { data: mission, isLoading } = useQuery({
+    queryKey: ["launch-details", missionId],
+    queryFn: () => missionId ? fetchLaunchDetails(missionId) : null,
+    enabled: !!missionId && open,
+  });
+
+  if (!missionId) return null;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Rocket className="w-5 h-5 text-primary" />
+            {isLoading ? "Loading..." : mission?.name || "Mission Details"}
+          </DialogTitle>
+          <DialogDescription>
+            Complete mission information from Launch Library API
+          </DialogDescription>
+        </DialogHeader>
+
+        {isLoading ? (
+          <div className="py-8 text-center text-muted-foreground">Loading mission details...</div>
+        ) : mission ? (
+          <div className="space-y-4 mt-4">
+            {mission.imageUrl && (
+              <img 
+                src={mission.imageUrl} 
+                alt={mission.name}
+                className="w-full h-48 object-cover rounded-lg"
+              />
+            )}
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <span className="text-xs uppercase tracking-wide text-muted-foreground">Provider</span>
+                <p className="text-sm font-semibold mt-1">{mission.provider}</p>
+              </div>
+              <div>
+                <span className="text-xs uppercase tracking-wide text-muted-foreground">Status</span>
+                <p className="text-sm font-semibold mt-1 capitalize">{mission.status}</p>
+              </div>
+              <div>
+                <span className="text-xs uppercase tracking-wide text-muted-foreground">Rocket</span>
+                <p className="text-sm font-semibold mt-1">{mission.rocket}</p>
+              </div>
+              <div>
+                <span className="text-xs uppercase tracking-wide text-muted-foreground">Launch Site</span>
+                <p className="text-sm font-semibold mt-1">{mission.launchSite}</p>
+              </div>
+            </div>
+
+            <div>
+              <span className="text-xs uppercase tracking-wide text-muted-foreground">Launch Date</span>
+              <p className="text-sm font-semibold mt-1">
+                {mission.launchDate.toLocaleString("en-US", {
+                  weekday: "long",
+                  year: "numeric",
+                  month: "long",
+                  day: "numeric",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })}
+              </p>
+            </div>
+
+            {mission.missionName && (
+              <div>
+                <span className="text-xs uppercase tracking-wide text-muted-foreground">Mission Name</span>
+                <p className="text-sm font-semibold mt-1">{mission.missionName}</p>
+              </div>
+            )}
+
+            {mission.payload && (
+              <div>
+                <span className="text-xs uppercase tracking-wide text-muted-foreground">Payload</span>
+                <p className="text-sm mt-1">{mission.payload}</p>
+              </div>
+            )}
+
+            {mission.description && (
+              <div>
+                <span className="text-xs uppercase tracking-wide text-muted-foreground">Description</span>
+                <p className="text-sm mt-1">{mission.description}</p>
+              </div>
+            )}
+
+            <div className="flex gap-2 pt-4">
+              {mission.infoUrl && (
+                <Button variant="outline" size="sm" asChild>
+                  <a href={mission.infoUrl} target="_blank" rel="noopener noreferrer" className="gap-2">
+                    <Info className="w-4 h-4" />
+                    More Info
+                    <ExternalLink className="w-4 h-4" />
+                  </a>
+                </Button>
+              )}
+              {mission.videoUrl && (
+                <Button variant="outline" size="sm" asChild>
+                  <a href={mission.videoUrl} target="_blank" rel="noopener noreferrer" className="gap-2">
+                    Watch Video
+                    <ExternalLink className="w-4 h-4" />
+                  </a>
+                </Button>
+              )}
+            </div>
+          </div>
+        ) : (
+          <div className="py-8 text-center text-muted-foreground">Failed to load mission details</div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+};
+
 export const MissionsFeed = () => {
-  const { data, isLoading, isError } = useQuery({
-    queryKey: ["missions"],
+  const [selectedMissionId, setSelectedMissionId] = useState<string | null>(null);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+
+  const { data: upcomingData, isLoading: upcomingLoading, isError: upcomingError } = useQuery({
+    queryKey: ["upcoming-missions"],
     queryFn: () => fetchUpcomingLaunches(4),
     staleTime: 5 * 60 * 1000,
     refetchInterval: 5 * 60 * 1000,
     retry: 1,
   });
 
-  const missions = useMemo<Launch[]>(() => {
-    if (!isError && data && data.length) return data;
-    return mockMissions;
-  }, [data, isError]);
+  const { data: recentData, isLoading: recentLoading, isError: recentError } = useQuery({
+    queryKey: ["recent-missions"],
+    queryFn: () => fetchRecentLaunches(4),
+    staleTime: 5 * 60 * 1000,
+    refetchInterval: 5 * 60 * 1000,
+    retry: 1,
+  });
+
+  const upcomingMissions = useMemo<Launch[]>(() => {
+    if (!upcomingError && upcomingData && upcomingData.length) return upcomingData;
+    return [];
+  }, [upcomingData, upcomingError]);
+
+  const recentMissions = useMemo<Launch[]>(() => {
+    if (!recentError && recentData && recentData.length) return recentData;
+    return [];
+  }, [recentData, recentError]);
+
+  const handleDetailsClick = (id: string) => {
+    setSelectedMissionId(id);
+    setDetailsOpen(true);
+  };
 
   return (
-    <section className="glass-panel p-6">
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-primary/20 flex items-center justify-center">
-            <Rocket className="w-5 h-5 text-primary" />
-          </div>
-          <div>
-            <h2 className="font-display text-lg font-bold tracking-wide">
-              UPCOMING MISSIONS
-            </h2>
-            <p className="text-xs text-muted-foreground">
-              Global Space Launch Schedule
-            </p>
+    <>
+      <section className="glass-panel p-6">
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-primary/20 flex items-center justify-center">
+              <Rocket className="w-5 h-5 text-primary" />
+            </div>
+            <div>
+              <h2 className="font-display text-lg font-bold tracking-wide">
+                MISSIONS
+              </h2>
+              <p className="text-xs text-muted-foreground">
+                Upcoming & Recent Launches
+              </p>
+            </div>
           </div>
         </div>
-        <Button variant="outline" size="sm" className="gap-2" disabled={isLoading}>
-          View All <ExternalLink className="w-4 h-4" />
-        </Button>
-      </div>
 
-      <div className="grid md:grid-cols-2 gap-4">
-        {missions.map((mission) => (
-          <MissionCard key={mission.id} mission={mission} />
-        ))}
-      </div>
-    </section>
+        {upcomingMissions.length > 0 && (
+          <div className="mb-8">
+            <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground mb-4">
+              Upcoming Missions
+            </h3>
+            <div className="grid md:grid-cols-2 gap-4">
+              {upcomingMissions.map((mission) => (
+                <MissionCard key={mission.id} mission={mission} onDetailsClick={handleDetailsClick} />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {recentMissions.length > 0 && (
+          <div>
+            <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground mb-4">
+              Recent Missions
+            </h3>
+            <div className="grid md:grid-cols-2 gap-4">
+              {recentMissions.map((mission) => (
+                <MissionCard key={mission.id} mission={mission} onDetailsClick={handleDetailsClick} />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {(upcomingLoading || recentLoading) && (
+          <div className="text-center py-8 text-muted-foreground">Loading missions...</div>
+        )}
+
+        {!upcomingLoading && !recentLoading && upcomingMissions.length === 0 && recentMissions.length === 0 && (
+          <div className="text-center py-8 text-muted-foreground">No missions available</div>
+        )}
+      </section>
+
+      <MissionDetailsDialog 
+        missionId={selectedMissionId} 
+        open={detailsOpen} 
+        onOpenChange={setDetailsOpen} 
+      />
+    </>
   );
 };

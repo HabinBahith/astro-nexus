@@ -1,14 +1,12 @@
-import { Activity, Clock, Globe, Signal, Database } from "lucide-react";
+import { Activity, Clock, Globe, Signal } from "lucide-react";
 import { useEffect, useState } from "react";
 
 export const StatusBar = () => {
   const [currentTime, setCurrentTime] = useState(new Date());
-  const [dataPoints, setDataPoints] = useState(147892);
 
   useEffect(() => {
     const interval = setInterval(() => {
       setCurrentTime(new Date());
-      setDataPoints((prev) => prev + Math.floor(Math.random() * 10));
     }, 1000);
     return () => clearInterval(interval);
   }, []);
@@ -33,13 +31,6 @@ export const StatusBar = () => {
       </div>
 
       <div className="flex items-center gap-6">
-        <div className="flex items-center gap-2">
-          <Database className="w-4 h-4 text-status-success" />
-          <span className="text-muted-foreground">Data Points:</span>
-          <span className="font-mono text-status-success">
-            {dataPoints.toLocaleString()}
-          </span>
-        </div>
         <div className="flex items-center gap-2">
           <Signal className="w-4 h-4 text-status-success" />
           <span className="text-muted-foreground">Latency:</span>
